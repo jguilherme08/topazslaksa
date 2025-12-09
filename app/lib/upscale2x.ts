@@ -4,31 +4,13 @@ import Upscaler from "upscaler";
 import modelDefinition from "@upscalerjs/esrgan-slim";
 
 let upscaler: Upscaler | null = null;
-let isInitializing = false;
 
 async function getUpscaler() {
-  if (upscaler) {
-    return upscaler;
-  }
-  
-  if (isInitializing) {
-    // wait for initialization to complete
-    while (!upscaler && isInitializing) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    return upscaler!;
-  }
-
-  isInitializing = true;
-  try {
+  if (!upscaler) {
     upscaler = new Upscaler({
       model: modelDefinition,
       scale: 2,
     });
-    // trigger model load
-    await (upscaler as any).loadModel();
-  } finally {
-    isInitializing = false;
   }
   return upscaler;
 }
