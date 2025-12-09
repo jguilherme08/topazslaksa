@@ -1,16 +1,34 @@
 "use client";
 
 import Upscaler from "upscaler";
-import x2 from "@upscalerjs/esrgan-slim";
+import modelDefinition from "@upscalerjs/esrgan-slim";
 
 let upscaler: Upscaler | null = null;
+let isInitializing = false;
 
 async function getUpscaler() {
-  if (!upscaler) {
+  if (upscaler) {
+    return upscaler;
+  }
+  
+  if (isInitializing) {
+    // wait for initialization to complete
+    while (!upscaler && isInitializing) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return upscaler!;
+  }
+
+  isInitializing = true;
+  try {
     upscaler = new Upscaler({
-      model: x2,
-      scale: 2, // explicit scale required for custom models
+      model: modelDefinition,
+      scale: 2,
     });
+    // trigger model load
+    await (upscaler as any).loadModel();
+  } finally {
+    isInitializing = false;
   }
   return upscaler;
 }
@@ -22,15 +40,18 @@ export async function upscaleFile2x(file: File): Promise<Blob> {
   const instance = await getUpscaler();
   const url = URL.createObjectURL(file);
 
-  const upscaledBase64 = (await (instance as any).upscale(url, {
-    output: "base64",
-    patchSize: 64,
-    padding: 8,
-  })) as string;
+  try {
+    const upscaledBase64 = (await (instance as any).upscale(url, {
+      output: "base64",
+      patchSize: 64,
+      padding: 8,
+    })) as string;
 
-  URL.revokeObjectURL(url);
-
-  const response = await fetch(upscaledBase64);
-  const blob = await response.blob();
-  return blob;
+    // Convert data URL to blob
+    const response = await fetch(upscaledBase64);
+    const blob = await response.blob();
+    return blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
