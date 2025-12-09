@@ -1,14 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { upscaleFile2x } from "./lib/upscale2x";
 
 type Status = { kind: "idle" | "loading" | "ok" | "error"; message: string };
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [upscale, setUpscale] = useState("2");
-  const [denoise, setDenoise] = useState(true);
-  const [faceRestore, setFaceRestore] = useState(false);
+  const [denoise] = useState(true);
+  const [faceRestore] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle", message: "" });
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
 
@@ -21,27 +22,11 @@ export default function Home() {
       return;
     }
 
-    setStatus({ kind: "loading", message: "Processando na GPU externa..." });
+    setStatus({ kind: "loading", message: "Processando 2x no seu navegador..." });
     setOutputUrl(null);
 
-    const form = new FormData();
-    form.append("image", file);
-    form.append("upscale", upscale);
-    form.append("denoise", denoise ? "true" : "false");
-    form.append("face_restore", faceRestore ? "true" : "false");
-
     try {
-      const res = await fetch("/api/upscale", {
-        method: "POST",
-        body: form,
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || res.statusText);
-      }
-
-      const blob = await res.blob();
+      const blob = await upscaleFile2x(file);
       const url = URL.createObjectURL(blob);
       setOutputUrl(url);
       setStatus({ kind: "ok", message: "Pronto! Baixe a imagem gerada." });
@@ -79,36 +64,26 @@ export default function Home() {
           </div>
 
           <div className="row">
-            <div className="field">
-              <label>Upscale</label>
-              <select value={upscale} onChange={(e) => setUpscale(e.target.value)}>
-                <option value="1">1x</option>
-                <option value="2">2x (recomendado)</option>
-              </select>
-            </div>
-
-            <div className="field" style={{ justifyContent: "flex-end" }}>
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={denoise}
-                  onChange={(e) => setDenoise(e.target.checked)}
-                />
-                Denoise
-              </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={faceRestore}
-                  onChange={(e) => setFaceRestore(e.target.checked)}
-                />
-                Face restore
-              </label>
-            </div>
+              <div className="field">
+                <label>Upscale</label>
+                <select value={upscale} onChange={(e) => setUpscale(e.target.value)} disabled>
+                  <option value="2">2x (fixo via ESRGAN slim)</option>
+                </select>
+              </div>
+              <div className="field" style={{ justifyContent: "flex-end" }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", opacity: 0.6 }}>
+                  <input type="checkbox" checked disabled />
+                  Denoise (n/a no modelo slim)
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", opacity: 0.6 }}>
+                  <input type="checkbox" checked={false} disabled />
+                  Face restore (n/a)
+                </label>
+              </div>
           </div>
 
           <button type="submit" disabled={!canSubmit} style={{ marginTop: 12 }}>
-            {status.kind === "loading" ? "Processando..." : "Enviar para IA"}
+            {status.kind === "loading" ? "Processando..." : "Upscale 2x no navegador"}
           </button>
 
           {status.kind !== "idle" && (
