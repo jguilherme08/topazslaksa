@@ -1,17 +1,21 @@
 "use client";
 
-import Upscaler from "upscaler";
-import modelDefinition from "@upscalerjs/esrgan-slim";
+import * as tf from "@tensorflow/tfjs";
+import "@tensorflow/tfjs-backend-webgl";
 
-let upscaler: Upscaler | null = null;
+let upscaler: any = null;
 
 async function getUpscaler() {
-  if (!upscaler) {
-    upscaler = new Upscaler({
-      model: modelDefinition,
-      scale: 2,
-    });
+  if (upscaler) {
+    return upscaler;
   }
+
+  // Use direct model path from CDN instead of npm package
+  const modelUrl =
+    "https://cdn.jsdelivr.net/npm/@upscalerjs/esrgan-slim@0.1.0/models/idealo/gans/model.json";
+
+  const model = await tf.loadGraphModel(modelUrl);
+  upscaler = { model };
   return upscaler;
 }
 
@@ -23,17 +27,48 @@ export async function upscaleFile2x(file: File): Promise<Blob> {
   const url = URL.createObjectURL(file);
 
   try {
-    const upscaledBase64 = (await (instance as any).upscale(url, {
-      output: "base64",
-      patchSize: 64,
-      padding: 8,
-    })) as string;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+      img.src = url;
+    });
 
-    // Convert data URL to blob
-    const response = await fetch(upscaledBase64);
-    const blob = await response.blob();
-    return blob;
+    // Convert image to tensor and preprocess
+    let tensor = tf.browser.fromPixels(img);
+    const normalized = tensor.div(255.0);
+
+    // Run inference
+    const output = tf.tidy(() => {
+      return instance.model.predict(normalized.expandDims(0));
+    });
+
+    // Postprocess and convert to canvas
+    const result = tf.tidy(() => {
+      const clipped = (output as tf.Tensor).clipByValue(0, 1);
+      const scaled = clipped.mul(255);
+      return scaled;
+    });
+
+    // Draw to canvas
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width * 2;
+    canvas.height = img.height * 2;
+    await tf.browser.toPixels(result.squeeze() as tf.Tensor3D, canvas);
+
+    // Convert canvas to blob
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error("Canvas to blob failed"));
+        },
+        "image/png"
+      );
+    });
   } finally {
     URL.revokeObjectURL(url);
+    tf.disposeVariables();
   }
 }
