@@ -9,7 +9,7 @@ async function getUpscaler() {
   if (!upscaler) {
     upscaler = new Upscaler({
       model: x2,
-      // tweak patchSize/padding if devices struggle
+      scale: 2, // explicit scale required for custom models
     });
   }
   return upscaler;
